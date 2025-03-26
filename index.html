@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Chatroom</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .chat-container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .messages { max-height: 400px; overflow-y: auto; margin-bottom: 10px; border: 1px solid #ddd; padding: 10px; }
+        .input-container { display: flex; }
+        .input-container input { flex: 1; padding: 10px; }
+        .input-container button { padding: 10px; }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <h2>Real-time Chatroom</h2>
+        <div class="messages" id="messages"></div>
+        <div class="input-container">
+            <input type="text" id="messageInput" placeholder="Type a message..." />
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        // Your Firebase config (from the Firebase Console)
+        const firebaseConfig = {
+            apiKey: "AIzaSyAI0839Q7BoAGx-5IgHlyCRnkwVUAizWao",
+            authDomain: "chat-4ff44.firebaseapp.com",
+            databaseURL: "https://chat-4ff44-default-rtdb.firebaseio.com",
+            projectId: "chat-4ff44",
+            storageBucket: "chat-4ff44.firebasestorage.app",
+            messagingSenderId: "307828591312",
+            appId: "1:307828591312:web:97ce0dcbc6e0add050acd5",
+            measurementId: "G-XBRY21C6TB"
+        };
+
+        // Initialize Firebase
+        const app = firebase.initializeApp(firebaseConfig);
+        const database = firebase.database(app);
+
+        // Reference to Firebase messages
+        const messagesRef = database.ref('messages');
+
+        // Send message to Firebase
+        function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const messageText = messageInput.value;
+            if (messageText.trim() !== "") {
+                messagesRef.push({
+                    message: messageText,
+                    timestamp: Date.now()
+                });
+                messageInput.value = ""; // Clear input after sending
+            }
+        }
+
+        // Listen for new messages and update UI
+        messagesRef.orderByChild('timestamp').on('child_added', function(snapshot) {
+            const messageData = snapshot.val();
+            const messageDiv = document.createElement('div');
+            messageDiv.textContent = messageData.message;
+            document.getElementById('messages').appendChild(messageDiv);
+        });
+    </script>
+</body>
+</html>
