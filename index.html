@@ -2,58 +2,90 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Firebase Chatroom</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Secure Chatroom</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f2f2f2; padding: 20px; }
-    #app { max-width: 700px; margin: auto; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    h2, h3 { margin-top: 0; }
-    .hidden { display: none; }
-    .message { margin: 5px 0; padding: 5px 10px; border-radius: 5px; background-color: var(--bg); }
-    .button { padding: 5px 10px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-    .button:hover { background: #0056b3; }
-    #chat, #roomList, #roomRequest, #chatroomSetup { display: none; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f0f0;
+      padding: 20px;
+    }
+    #chat, #roomSelect, #joinRequestScreen {
+      max-width: 600px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      display: none;
+    }
+    #messages {
+      height: 300px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 10px;
+      background: #eee;
+      margin-bottom: 10px;
+    }
+    .message {
+      margin: 4px 0;
+      padding: 6px 10px;
+      border-radius: 5px;
+      background: #dfe6fd;
+    }
+    #inputArea {
+      display: flex;
+      gap: 10px;
+    }
+    #inputArea input {
+      flex: 1;
+      padding: 10px;
+    }
+    #inputArea button {
+      padding: 10px 20px;
+    }
+    #joinRequestScreen {
+      text-align: center;
+    }
+    #hostControls {
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
-  <div id="app">
-    <div id="nameEntry">
-      <h2>Enter Your Name</h2>
-      <input type="text" id="userName" placeholder="Your name">
-      <button class="button" onclick="saveName()">Continue</button>
-    </div>
-
-    <div id="roomMenu">
-      <h2>Choose a Chatroom</h2>
-      <button class="button" onclick="showRoomSetup()">Create New Room</button>
-      <div id="roomList"></div>
-    </div>
-
-    <div id="chatroomSetup">
-      <h3>Create Room</h3>
-      <input type="text" id="roomName" placeholder="Room name">
-      <label><input type="checkbox" id="privateRoom"> Private Room</label><br>
-      <input type="color" id="messageColor" value="#e0e0ff">
-      <button class="button" onclick="createRoom()">Create</button>
-    </div>
-
-    <div id="roomRequest">
-      <h3>Requesting to Join Room...</h3>
-      <p>Waiting for host approval</p>
-      <button class="button" onclick="cancelJoinRequest()">Cancel</button>
-    </div>
-
-    <div id="chat">
-      <h3 id="currentRoom"></h3>
-      <div id="messages" style="height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; background: #f9f9f9;"></div>
-      <input type="text" id="messageInput" placeholder="Type a message...">
-      <button class="button" onclick="sendMessage()">Send</button>
-      <button class="button" onclick="leaveRoom()">Leave Room</button>
-    </div>
+  <div id="setup">
+    <h2>Enter your name</h2>
+    <input id="usernameInput" placeholder="Your name" />
+    <button onclick="enterRoomSelect()">Continue</button>
   </div>
 
+  <div id="roomSelect">
+    <h2>Choose or Create a Room</h2>
+    <input id="roomNameInput" placeholder="Room name" />
+    <label><input type="checkbox" id="isPrivateCheckbox" /> Make Private</label>
+    <button onclick="createRoom()">Create Room</button>
+    <h3>Available Rooms</h3>
+    <ul id="roomList"></ul>
+  </div>
+
+  <div id="joinRequestScreen">
+    <p>Asking to join...</p>
+    <button onclick="cancelJoinRequest()">Cancel</button>
+  </div>
+
+  <div id="chat">
+    <h2 id="roomTitle">Room</h2>
+    <div id="messages"></div>
+    <div id="inputArea">
+      <input id="messageInput" placeholder="Type a message..." />
+      <button onclick="sendMessage()">Send</button>
+    </div>
+    <button onclick="leaveRoom()">Leave Room</button>
+  </div>
+
+  <!-- Firebase Scripts -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
   <script>
     const firebaseConfig = {
       apiKey: "AIzaSyAI0839Q7BoAGx-5IgHlyCRnkwVUAizWao",
@@ -65,151 +97,149 @@
       appId: "1:307828591312:web:97ce0dcbc6e0add050acd5",
       measurementId: "G-XBRY21C6TB"
     };
+
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    let userName = localStorage.getItem("chatUser") || "";
-    let currentRoom = "";
-    let messageCooldown = false;
+    let username = "", room = "", isHost = false;
 
-    function saveName() {
-      const nameInput = document.getElementById("userName").value.trim();
-      if (nameInput) {
-        userName = nameInput;
-        localStorage.setItem("chatUser", userName);
-        document.getElementById("nameEntry").style.display = "none";
-        document.getElementById("roomMenu").style.display = "block";
-        loadRooms();
-      }
+    const setupDiv = document.getElementById("setup");
+    const roomSelectDiv = document.getElementById("roomSelect");
+    const joinRequestDiv = document.getElementById("joinRequestScreen");
+    const chatDiv = document.getElementById("chat");
+
+    function enterRoomSelect() {
+      username = document.getElementById("usernameInput").value.trim();
+      if (!username) return alert("Enter a name");
+      setupDiv.style.display = "none";
+      roomSelectDiv.style.display = "block";
+      loadRoomList();
     }
 
-    function showRoomSetup() {
-      document.getElementById("roomMenu").style.display = "none";
-      document.getElementById("chatroomSetup").style.display = "block";
+    function loadRoomList() {
+      const list = document.getElementById("roomList");
+      list.innerHTML = "";
+      db.ref("rooms").once("value", snap => {
+        snap.forEach(roomSnap => {
+          const r = roomSnap.key;
+          const data = roomSnap.val();
+          const li = document.createElement("li");
+          li.textContent = `${r} ${data.private ? "(Private)" : ""}`;
+          li.onclick = () => tryJoinRoom(r, data.private);
+          list.appendChild(li);
+        });
+      });
     }
 
     function createRoom() {
-      const name = document.getElementById("roomName").value.trim();
-      const isPrivate = document.getElementById("privateRoom").checked;
-      const color = document.getElementById("messageColor").value;
-      if (!name) return;
+      room = document.getElementById("roomNameInput").value.trim();
+      const isPrivate = document.getElementById("isPrivateCheckbox").checked;
+      if (!room) return alert("Enter room name");
 
-      db.ref("rooms/" + name).set({
-        host: userName,
-        private: isPrivate,
-        color: color,
-        users: { [userName]: true }
-      });
-      joinRoom(name, true);
+      const roomRef = db.ref("rooms/" + room);
+      roomRef.set({ private: isPrivate });
+      roomRef.child("members").push({ name: username });
+      roomRef.child("host").set(username);
+      isHost = true;
+
+      startChat();
     }
 
-    function loadRooms() {
-      const list = document.getElementById("roomList");
-      list.innerHTML = "<h3>Available Rooms</h3>";
-      db.ref("rooms").on("value", (snapshot) => {
-        list.innerHTML = "<h3>Available Rooms</h3>";
-        snapshot.forEach(child => {
-          const room = child.key;
-          const data = child.val();
-          const div = document.createElement("div");
-          div.innerHTML = `${room} ${data.private ? "🔒" : ""}`;
-          const btn = document.createElement("button");
-          btn.className = "button";
-          btn.textContent = "Join";
-          btn.onclick = () => joinRoom(room, false);
-          div.appendChild(btn);
-          list.appendChild(div);
+    function tryJoinRoom(roomName, isPrivate) {
+      room = roomName;
+      if (isPrivate) {
+        joinRequestDiv.style.display = "block";
+        db.ref("rooms/" + room + "/joinRequests").push({
+          name: username,
+          timestamp: Date.now()
+        }).then(reqRef => {
+          const myReqKey = reqRef.key;
+          db.ref("rooms/" + room + "/responses/" + myReqKey).on("value", snap => {
+            const response = snap.val();
+            if (response === "accepted") {
+              joinRequestDiv.style.display = "none";
+              db.ref("rooms/" + room + "/members").push({ name: username });
+              startChat();
+            } else if (response === "denied") {
+              joinRequestDiv.style.display = "none";
+              alert("Denied by host.");
+            }
+          });
         });
-      });
-    }
-
-    function joinRoom(name, isCreator) {
-      db.ref("rooms/" + name).once("value", snap => {
-        if (!snap.exists()) return alert("Room does not exist");
-        const roomData = snap.val();
-        currentRoom = name;
-        document.documentElement.style.setProperty('--bg', roomData.color || '#e0e0ff');
-
-        if (roomData.private && roomData.host !== userName && !isCreator) {
-          db.ref(`rooms/${name}/requests/${userName}`).set(true);
-          document.getElementById("roomMenu").style.display = "none";
-          document.getElementById("roomRequest").style.display = "block";
-          db.ref(`rooms/${name}/users/${userName}`).on("value", snap => {
-            if (snap.exists()) {
-              document.getElementById("roomRequest").style.display = "none";
-              showChat(name);
-            }
-          });
-        } else {
-          db.ref(`rooms/${name}/users/${userName}`).set(true);
-          showChat(name);
-        }
-
-        if (roomData.host === userName) {
-          db.ref(`rooms/${name}/requests`).on("child_added", reqSnap => {
-            const reqUser = reqSnap.key;
-            if (confirm(`${reqUser} wants to join ${name}. Accept?`)) {
-              db.ref(`rooms/${name}/users/${reqUser}`).set(true);
-              db.ref(`rooms/${name}/requests/${reqUser}`).remove();
-            }
-          });
-        }
-      });
+      } else {
+        db.ref("rooms/" + room + "/members").push({ name: username });
+        startChat();
+      }
     }
 
     function cancelJoinRequest() {
-      db.ref(`rooms/${currentRoom}/requests/${userName}`).remove();
-      document.getElementById("roomRequest").style.display = "none";
-      document.getElementById("roomMenu").style.display = "block";
+      joinRequestDiv.style.display = "none";
+      room = "";
     }
 
-    function showChat(room) {
-      document.getElementById("chatroomSetup").style.display = "none";
-      document.getElementById("roomMenu").style.display = "none";
-      document.getElementById("chat").style.display = "block";
-      document.getElementById("currentRoom").textContent = `Room: ${room}`;
-      db.ref(`rooms/${room}/messages`).on("child_added", snap => {
+    function startChat() {
+      roomSelectDiv.style.display = "none";
+      joinRequestDiv.style.display = "none";
+      chatDiv.style.display = "block";
+      document.getElementById("roomTitle").textContent = "Room: " + room;
+
+      // Watch messages
+      db.ref("rooms/" + room + "/messages").on("child_added", snap => {
         const msg = snap.val();
         const div = document.createElement("div");
         div.className = "message";
-        div.textContent = `${msg.user}: ${msg.text}`;
+        div.innerHTML = `<strong>${msg.name}${msg.host ? " 👑" : ""}:</strong> ${msg.text}`;
         document.getElementById("messages").appendChild(div);
       });
+
+      // If host, watch join requests
+      if (isHost) {
+        db.ref("rooms/" + room + "/joinRequests").on("child_added", snap => {
+          const data = snap.val();
+          const reqKey = snap.key;
+          const approved = confirm(`${data.name} wants to join. Approve?`);
+          db.ref("rooms/" + room + "/responses/" + reqKey).set(approved ? "accepted" : "denied");
+        });
+      }
     }
 
     function sendMessage() {
-      if (messageCooldown) return;
       const input = document.getElementById("messageInput");
       const text = input.value.trim();
       if (!text) return;
-      db.ref(`rooms/${currentRoom}/messages`).push({ user: userName, text });
+      db.ref("rooms/" + room + "/messages").push({
+        name: username,
+        text: text,
+        host: isHost
+      });
       input.value = "";
-      messageCooldown = true;
-      setTimeout(() => messageCooldown = false, 300);
     }
 
     function leaveRoom() {
-      db.ref(`rooms/${currentRoom}/users/${userName}`).remove();
-      document.getElementById("chat").style.display = "none";
-      document.getElementById("roomMenu").style.display = "block";
-      currentRoom = "";
-      cleanupEmptyRooms();
-    }
-
-    function cleanupEmptyRooms() {
-      db.ref("rooms").once("value", snapshot => {
-        snapshot.forEach(child => {
-          if (!child.child("users").exists()) {
-            db.ref("rooms/" + child.key).remove();
-          }
-        });
+      db.ref("rooms/" + room + "/members").once("value", snap => {
+        const members = snap.val();
+        if (!members) return;
+        const newMembers = {};
+        let hostTransferred = false;
+        let firstMember = null;
+        for (const key in members) {
+          if (members[key].name === username) continue;
+          if (!firstMember) firstMember = members[key].name;
+          newMembers[key] = members[key];
+        }
+        db.ref("rooms/" + room + "/members").set(newMembers);
+        if (isHost && firstMember) {
+          db.ref("rooms/" + room + "/host").set(firstMember);
+        }
+        if (Object.keys(newMembers).length === 0) {
+          db.ref("rooms/" + room).remove(); // close room if empty
+        }
       });
-    }
 
-    if (userName) {
-      document.getElementById("nameEntry").style.display = "none";
-      document.getElementById("roomMenu").style.display = "block";
-      loadRooms();
+      chatDiv.style.display = "none";
+      setupDiv.style.display = "block";
+      isHost = false;
+      room = "";
     }
   </script>
 </body>
