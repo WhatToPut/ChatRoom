@@ -3,82 +3,57 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Enhanced Firebase Chatroom</title>
+  <title>Firebase Chatroom</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f9f9f9;
-      padding: 30px;
-    }
-
-    h1 {
-      text-align: center;
-    }
-
-    #setup, #chatUI {
-      max-width: 600px;
-      margin: 0 auto;
-      display: none;
-    }
-
-    #messages {
-      height: 300px;
-      overflow-y: auto;
-      border: 1px solid #ccc;
-      padding: 10px;
-      background: #eee;
-      border-radius: 8px;
-    }
-
-    .message {
-      padding: 6px;
-      margin: 5px 0;
-      border-radius: 5px;
-    }
-
-    #inputArea {
-      display: flex;
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    #msgInput {
-      flex: 1;
-      padding: 10px;
-    }
-
-    #sendBtn, #leaveBtn, #joinBtn {
-      padding: 10px;
-      cursor: pointer;
-      border: none;
-      border-radius: 5px;
-      background: #4caf50;
-      color: white;
-    }
+    body { font-family: Arial, sans-serif; background: #f2f2f2; padding: 20px; }
+    #app { max-width: 700px; margin: auto; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    h2, h3 { margin-top: 0; }
+    .hidden { display: none; }
+    .message { margin: 5px 0; padding: 5px 10px; border-radius: 5px; background-color: var(--bg); }
+    .button { padding: 5px 10px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    .button:hover { background: #0056b3; }
+    #chat, #roomList, #roomRequest, #chatroomSetup { display: none; }
   </style>
 </head>
 <body>
-  <h1>Enhanced Firebase Chatroom</h1>
-
-  <div id="setup">
-    <input id="nameInput" placeholder="Enter your name" />
-    <input id="roomInput" placeholder="Room name" />
-    <input id="colorInput" type="color" value="#e0e0ff" />
-    <button id="joinBtn">Join Chat</button>
-  </div>
-
-  <div id="chatUI">
-    <div id="messages"></div>
-    <div id="inputArea">
-      <input id="msgInput" placeholder="Type message..." />
-      <button id="sendBtn">Send</button>
+  <div id="app">
+    <div id="nameEntry">
+      <h2>Enter Your Name</h2>
+      <input type="text" id="userName" placeholder="Your name">
+      <button class="button" onclick="saveName()">Continue</button>
     </div>
-    <button id="leaveBtn">Leave Room</button>
+
+    <div id="roomMenu">
+      <h2>Choose a Chatroom</h2>
+      <button class="button" onclick="showRoomSetup()">Create New Room</button>
+      <div id="roomList"></div>
+    </div>
+
+    <div id="chatroomSetup">
+      <h3>Create Room</h3>
+      <input type="text" id="roomName" placeholder="Room name">
+      <label><input type="checkbox" id="privateRoom"> Private Room</label><br>
+      <input type="color" id="messageColor" value="#e0e0ff">
+      <button class="button" onclick="createRoom()">Create</button>
+    </div>
+
+    <div id="roomRequest">
+      <h3>Requesting to Join Room...</h3>
+      <p>Waiting for host approval</p>
+      <button class="button" onclick="cancelJoinRequest()">Cancel</button>
+    </div>
+
+    <div id="chat">
+      <h3 id="currentRoom"></h3>
+      <div id="messages" style="height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; background: #f9f9f9;"></div>
+      <input type="text" id="messageInput" placeholder="Type a message...">
+      <button class="button" onclick="sendMessage()">Send</button>
+      <button class="button" onclick="leaveRoom()">Leave Room</button>
+    </div>
   </div>
 
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-
   <script>
     const firebaseConfig = {
       apiKey: "AIzaSyAI0839Q7BoAGx-5IgHlyCRnkwVUAizWao",
@@ -90,100 +65,152 @@
       appId: "1:307828591312:web:97ce0dcbc6e0add050acd5",
       measurementId: "G-XBRY21C6TB"
     };
-
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    const nameInput = document.getElementById("nameInput");
-    const roomInput = document.getElementById("roomInput");
-    const colorInput = document.getElementById("colorInput");
-    const joinBtn = document.getElementById("joinBtn");
-    const sendBtn = document.getElementById("sendBtn");
-    const leaveBtn = document.getElementById("leaveBtn");
-    const msgInput = document.getElementById("msgInput");
-    const messagesDiv = document.getElementById("messages");
-    const setup = document.getElementById("setup");
-    const chatUI = document.getElementById("chatUI");
-
+    let userName = localStorage.getItem("chatUser") || "";
     let currentRoom = "";
-    let userName = "";
-    let userColor = "#e0e0ff";
-    let lastSent = 0;
+    let messageCooldown = false;
 
-    setup.style.display = "block";
-
-    joinBtn.onclick = async () => {
-      userName = nameInput.value.trim();
-      currentRoom = roomInput.value.trim();
-      userColor = colorInput.value;
-      if (!userName || !currentRoom) return alert("Name and room required");
-
-      const roomMetaRef = db.ref(`chatrooms/${currentRoom}/meta`);
-      const metaSnap = await roomMetaRef.get();
-
-      if (metaSnap.exists()) {
-        const meta = metaSnap.val();
-        if (meta.private && !meta.allowed?.[userName]) {
-          return alert("This is a private room. You are not on the guest list.");
-        }
-      } else {
-        const isPrivate = confirm("Make this room private? OK = Yes, Cancel = No");
-        const meta = {
-          private: isPrivate,
-          ...(isPrivate ? { allowed: { [userName]: true } } : {})
-        };
-        await roomMetaRef.set(meta);
+    function saveName() {
+      const nameInput = document.getElementById("userName").value.trim();
+      if (nameInput) {
+        userName = nameInput;
+        localStorage.setItem("chatUser", userName);
+        document.getElementById("nameEntry").style.display = "none";
+        document.getElementById("roomMenu").style.display = "block";
+        loadRooms();
       }
+    }
 
-      chatUI.style.display = "block";
-      setup.style.display = "none";
+    function showRoomSetup() {
+      document.getElementById("roomMenu").style.display = "none";
+      document.getElementById("chatroomSetup").style.display = "block";
+    }
 
-      const roomRef = db.ref(`chatrooms/${currentRoom}`);
-      const userStatusRef = db.ref(`chatrooms/${currentRoom}/users/${userName}`);
-      userStatusRef.set(true);
-      userStatusRef.onDisconnect().remove();
+    function createRoom() {
+      const name = document.getElementById("roomName").value.trim();
+      const isPrivate = document.getElementById("privateRoom").checked;
+      const color = document.getElementById("messageColor").value;
+      if (!name) return;
 
-      db.ref(`chatrooms/${currentRoom}/users`).on("value", snap => {
-        if (!snap.exists()) db.ref(`chatrooms/${currentRoom}`).remove();
+      db.ref("rooms/" + name).set({
+        host: userName,
+        private: isPrivate,
+        color: color,
+        users: { [userName]: true }
       });
+      joinRoom(name, true);
+    }
 
-      roomRef.orderByChild("timestamp").on("child_added", snap => {
-        const data = snap.val();
-        if (!data.text) return;
+    function loadRooms() {
+      const list = document.getElementById("roomList");
+      list.innerHTML = "<h3>Available Rooms</h3>";
+      db.ref("rooms").on("value", (snapshot) => {
+        list.innerHTML = "<h3>Available Rooms</h3>";
+        snapshot.forEach(child => {
+          const room = child.key;
+          const data = child.val();
+          const div = document.createElement("div");
+          div.innerHTML = `${room} ${data.private ? "🔒" : ""}`;
+          const btn = document.createElement("button");
+          btn.className = "button";
+          btn.textContent = "Join";
+          btn.onclick = () => joinRoom(room, false);
+          div.appendChild(btn);
+          list.appendChild(div);
+        });
+      });
+    }
+
+    function joinRoom(name, isCreator) {
+      db.ref("rooms/" + name).once("value", snap => {
+        if (!snap.exists()) return alert("Room does not exist");
+        const roomData = snap.val();
+        currentRoom = name;
+        document.documentElement.style.setProperty('--bg', roomData.color || '#e0e0ff');
+
+        if (roomData.private && roomData.host !== userName && !isCreator) {
+          db.ref(`rooms/${name}/requests/${userName}`).set(true);
+          document.getElementById("roomMenu").style.display = "none";
+          document.getElementById("roomRequest").style.display = "block";
+          db.ref(`rooms/${name}/users/${userName}`).on("value", snap => {
+            if (snap.exists()) {
+              document.getElementById("roomRequest").style.display = "none";
+              showChat(name);
+            }
+          });
+        } else {
+          db.ref(`rooms/${name}/users/${userName}`).set(true);
+          showChat(name);
+        }
+
+        if (roomData.host === userName) {
+          db.ref(`rooms/${name}/requests`).on("child_added", reqSnap => {
+            const reqUser = reqSnap.key;
+            if (confirm(`${reqUser} wants to join ${name}. Accept?`)) {
+              db.ref(`rooms/${name}/users/${reqUser}`).set(true);
+              db.ref(`rooms/${name}/requests/${reqUser}`).remove();
+            }
+          });
+        }
+      });
+    }
+
+    function cancelJoinRequest() {
+      db.ref(`rooms/${currentRoom}/requests/${userName}`).remove();
+      document.getElementById("roomRequest").style.display = "none";
+      document.getElementById("roomMenu").style.display = "block";
+    }
+
+    function showChat(room) {
+      document.getElementById("chatroomSetup").style.display = "none";
+      document.getElementById("roomMenu").style.display = "none";
+      document.getElementById("chat").style.display = "block";
+      document.getElementById("currentRoom").textContent = `Room: ${room}`;
+      db.ref(`rooms/${room}/messages`).on("child_added", snap => {
+        const msg = snap.val();
         const div = document.createElement("div");
         div.className = "message";
-        div.style.background = data.color || "#e0e0ff";
-        div.textContent = `${data.name}: ${data.text}`;
-        messagesDiv.appendChild(div);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        div.textContent = `${msg.user}: ${msg.text}`;
+        document.getElementById("messages").appendChild(div);
       });
-    };
+    }
 
-    sendBtn.onclick = () => {
-      const now = Date.now();
-      if (now - lastSent < 300) return alert("Slow down!");
-
-      const text = msgInput.value.trim();
+    function sendMessage() {
+      if (messageCooldown) return;
+      const input = document.getElementById("messageInput");
+      const text = input.value.trim();
       if (!text) return;
+      db.ref(`rooms/${currentRoom}/messages`).push({ user: userName, text });
+      input.value = "";
+      messageCooldown = true;
+      setTimeout(() => messageCooldown = false, 300);
+    }
 
-      db.ref(`chatrooms/${currentRoom}`).push({
-        name: userName,
-        text: text,
-        color: userColor,
-        timestamp: now
+    function leaveRoom() {
+      db.ref(`rooms/${currentRoom}/users/${userName}`).remove();
+      document.getElementById("chat").style.display = "none";
+      document.getElementById("roomMenu").style.display = "block";
+      currentRoom = "";
+      cleanupEmptyRooms();
+    }
+
+    function cleanupEmptyRooms() {
+      db.ref("rooms").once("value", snapshot => {
+        snapshot.forEach(child => {
+          if (!child.child("users").exists()) {
+            db.ref("rooms/" + child.key).remove();
+          }
+        });
       });
+    }
 
-      msgInput.value = "";
-      lastSent = now;
-    };
-
-    leaveBtn.onclick = () => {
-      db.ref(`chatrooms/${currentRoom}/users/${userName}`).remove();
-      db.ref(`chatrooms/${currentRoom}`).off();
-      messagesDiv.innerHTML = "";
-      chatUI.style.display = "none";
-      setup.style.display = "block";
-    };
+    if (userName) {
+      document.getElementById("nameEntry").style.display = "none";
+      document.getElementById("roomMenu").style.display = "block";
+      loadRooms();
+    }
   </script>
 </body>
 </html>
