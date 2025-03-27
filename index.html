@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Simple Firebase Chatroom</title>
+  <title>Firebase Chatroom with Settings</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -72,6 +72,20 @@
       font-size: 14px;
       margin-top: 10px;
     }
+
+    #settingsButton {
+      margin-top: 10px;
+      background: #2196f3;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    #settingsButton:hover {
+      background: #1976d2;
+    }
   </style>
 </head>
 <body>
@@ -82,6 +96,7 @@
       <input type="text" id="messageInput" placeholder="Type a message..." />
       <button id="sendButton">Send</button>
     </div>
+    <button id="settingsButton">Settings</button>
     <div id="status">Status: <span id="statusText">Connecting...</span></div>
   </div>
 
@@ -90,16 +105,15 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 
   <script>
-    // 🧩 Insert your Firebase configuration here
+    // 🧩 Replace with your actual Firebase configuration
     const firebaseConfig = {
-      apiKey: "AIzaSyAI0839Q7BoAGx-5IgHlyCRnkwVUAizWao",
-      authDomain: "chat-4ff44.firebaseapp.com",
-      databaseURL: "https://chat-4ff44-default-rtdb.firebaseio.com",
-      projectId: "chat-4ff44",
-      storageBucket: "chat-4ff44.firebasestorage.app",
-      messagingSenderId: "307828591312",
-      appId: "1:307828591312:web:97ce0dcbc6e0add050acd5",
-      measurementId: "G-XBRY21C6TB"
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
     };
 
     // Initialize Firebase
@@ -107,13 +121,17 @@
     const database = firebase.database();
     const messagesRef = database.ref("messages");
 
-    // Elements
+    // DOM Elements
     const messagesDiv = document.getElementById("messages");
     const messageInput = document.getElementById("messageInput");
     const sendButton = document.getElementById("sendButton");
     const statusText = document.getElementById("statusText");
+    const settingsButton = document.getElementById("settingsButton");
 
-    // Show Firebase connection status
+    // Store name in localStorage or default
+    let displayName = localStorage.getItem("displayName") || "Anonymous";
+
+    // Firebase connection status
     database.ref(".info/connected").on("value", (snap) => {
       if (snap.val() === true) {
         statusText.textContent = "Connected ✅";
@@ -124,27 +142,38 @@
       }
     });
 
-    // Send Message
+    // Send message with display name
     sendButton.addEventListener("click", () => {
       const text = messageInput.value.trim();
       if (text) {
         messagesRef.push({
           message: text,
+          name: displayName,
           timestamp: Date.now()
         });
         messageInput.value = "";
       }
     });
 
-    // Receive and display messages
+    // Display messages
     messagesRef.orderByChild("timestamp").on("child_added", (snapshot) => {
-      const msg = snapshot.val();
+      const data = snapshot.val();
       const msgDiv = document.createElement("div");
       msgDiv.className = "message";
-      msgDiv.textContent = msg.message;
+      msgDiv.textContent = `[${data.name || "Unknown"}]: ${data.message}`;
       messagesDiv.appendChild(msgDiv);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
-      console.log("Received:", msg.message);
+      console.log("Received:", data);
+    });
+
+    // Settings: prompt for name
+    settingsButton.addEventListener("click", () => {
+      const newName = prompt("Enter your display name:", displayName);
+      if (newName && newName.trim() !== "") {
+        displayName = newName.trim();
+        localStorage.setItem("displayName", displayName);
+        alert(`Your name has been set to "${displayName}"`);
+      }
     });
   </script>
 </body>
